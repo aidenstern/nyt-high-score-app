@@ -3,6 +3,7 @@ import { Handler } from 'aws-lambda';
 
 const s3 = new S3Client({ region: 'us-east-1' });
 
+const authToken = process.env.TWILIO_AUTH_TOKEN;
 const bucketName = process.env.BUCKET_NAME || '';
 
 import twillio = require('twilio');
@@ -13,7 +14,7 @@ export const handler: Handler = async (event, context) => {
     const body = event.body || '';
 
     const validRequest = twillio.validateRequest(
-      process.env.TWILIO_AUTH_TOKEN,
+      authToken,
       twilioSignature,
       `${process.env.API_GATEWAY_URL}/sms`,
       body

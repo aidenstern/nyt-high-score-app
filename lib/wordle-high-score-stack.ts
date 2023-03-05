@@ -20,6 +20,7 @@ export class WordleHighScoreStack extends cdk.Stack {
       handler: 'high-score.handler',
       environment: {
         BUCKET_NAME: bucket.bucketName,
+        AUTH_TOKEN: ""
       },
     });
 
