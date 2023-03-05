@@ -24,9 +24,9 @@ export const handler: Handler = async (event, context) => {
       throw new Error('Invalid request signature');
     }
 
-    const highScore = parseInt(event.body);
+    const wordleScore = scoreWordle(event.body.message);
 
-    if (isNaN(highScore)) {
+    if (isNaN(wordleScore)) {
       throw new Error('Invalid high score');
     }
 
@@ -36,7 +36,7 @@ export const handler: Handler = async (event, context) => {
       new PutObjectCommand({
         Bucket: bucketName,
         Key: `${phoneNumber}.txt`,
-        Body: highScore.toString(),
+        Body: wordleScore.toString(),
       })
     );
 
@@ -53,3 +53,4 @@ export const handler: Handler = async (event, context) => {
     };
   }
 };
+
