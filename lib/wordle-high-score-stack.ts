@@ -1,33 +1,53 @@
-import * as cdk from 'aws-cdk-lib';
-import { Construct } from 'constructs';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as lambda from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import { Stack, StackProps } from "aws-cdk-lib";
+import { Construct } from "constructs";
 
-export class WordleHighScoreStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+
+export class WordleHighScoreStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    // Step 1: Create an S3 bucket
-    const bucket = new s3.Bucket(this, 'HighScoresBucket', {
+    // S3 bucket for games scores
+    const bucket = new s3.Bucket(this, "GameScoreBucket", {
       versioned: true,
     });
 
-    // Step 2: Create a Lambda function
-    const highScoreHandler = new lambda.NodejsFunction(this, 'HighScoreHandler', {
-      environment: {
-        BUCKET_NAME: bucket.bucketName,
-        AUTH_TOKEN: ""
+    // Twilio secrets
+    const twilioSecret = new secretsmanager.Secret(this, "TwilioSecrets", {
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          ACCOUNT_SID: "",
+        }),
+        generateStringKey: "AUTH_TOKEN",
       },
     });
 
-    bucket.grantReadWrite(highScoreHandler);
+    // Lambda function handler for storing Wordle scores in S3
+    const wordleHighScoreHandler = new lambda.NodejsFunction(
+      this,
+      "HighScoreHandler",
+      {
+        entry: "lib/wordle-high-score.handler.ts",
+        environment: {
+          BUCKET_NAME: bucket.bucketName,
+          TWILIO_SECRET_ARN: twilioSecret.secretArn
+        },
+      }
+    );
 
-    // Step 3: Create an API Gateway REST API
-    const api = new apigateway.RestApi(this, 'HighScoreApi');
+    bucket.grantReadWrite(wordleHighScoreHandler);
+    twilioSecret.grantRead(wordleHighScoreHandler)
+    // bucket.grantRead(dailyScoreReportHandler);
 
-    const smsResource = api.root.addResource('sms');
-    const smsIntegration = new apigateway.LambdaIntegration(highScoreHandler);
-    smsResource.addMethod('POST', smsIntegration);
+    // API Gateway for Twilio webhook
+    const api = new apigateway.RestApi(this, "GameScoreApi");
+    const smsResource = api.root.addResource("sms");
+    const smsIntegration = new apigateway.LambdaIntegration(
+      wordleHighScoreHandler
+    );
+    smsResource.addMethod("POST", smsIntegration);
   }
 }
