@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambda from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 
 export class WordleHighScoreStack extends cdk.Stack {
@@ -14,10 +14,7 @@ export class WordleHighScoreStack extends cdk.Stack {
     });
 
     // Step 2: Create a Lambda function
-    const highScoreHandler = new lambda.Function(this, 'HighScoreHandler', {
-      runtime: lambda.Runtime.NODEJS_14_X,
-      code: lambda.Code.fromAsset('lambda'),
-      handler: 'high-score.handler',
+    const highScoreHandler = new lambda.NodejsFunction(this, 'HighScoreHandler', {
       environment: {
         BUCKET_NAME: bucket.bucketName,
         AUTH_TOKEN: ""
