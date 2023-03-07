@@ -1,11 +1,11 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Handler } from "aws-lambda";
 import { getWordleScore, getWordleNumber } from "./wordle";
-import twilio = require("twilio");
 import {
   GetSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
+import twilio = require("twilio");
 
 const s3 = new S3Client({});
 const secretsManager = new SecretsManagerClient({});
