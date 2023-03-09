@@ -1,3 +1,12 @@
-export default (data: any) => `
-    <p>${data}</p>
-`
+
+interface WordleScore {
+    message: string;
+    phoneNumber: string;
+    wordleScore: string;
+}
+
+const content = {};
+
+export default (scores: WordleScore[]) => {
+    return content;
+}

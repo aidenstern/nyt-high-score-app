@@ -16,7 +16,6 @@ export const handler: Handler = async (event, context) => {
   // Get three highest scores
 
   // Create a static page with these scores from template
-  const page = template("");
 
   // Upload page to S3 bucket
 

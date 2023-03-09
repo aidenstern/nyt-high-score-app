@@ -64,7 +64,7 @@ export class WordleHighScoreStack extends Stack {
         entry: "lib/website-generation.handler.ts",
         environment: {
           GAME_SCORE_BUCKET_NAME: gameScoreBucket.bucketName,
-          WEBSITE_BUCKET_NAME: "",
+          WEBSITE_BUCKET_NAME: websiteBucket.bucketName,
         },
       }
     );
