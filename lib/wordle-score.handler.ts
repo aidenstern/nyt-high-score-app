@@ -1,6 +1,6 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Handler } from "aws-lambda";
-import { getWordleScore, getWordleNumber } from "./wordle";
+import { WordleGame, parseWordleMessage, isValidWordleMessage } from "./wordle";
 import {
   GetSecretValueCommand,
   SecretsManagerClient,
@@ -43,49 +43,19 @@ export const handler: Handler = async (event, context) => {
       throw new Error("Invalid Twilio request signature");
     }
 
-    const phoneNumber = params.From;
     const message = params.Body; // Wordle message
-    const wordleNumber = getWordleNumber(message);
-    const wordleScore = getWordleScore(message);
-
-    console.log({
-      params, message, phoneNumber, wordleNumber, wordleScore
-    });
-
-    if (isNaN(wordleScore) || wordleNumber == undefined) {
+    if (!isValidWordleMessage(message)) {
       throw new Error("Invalid Wordle message");
     }
 
-    const object = await s3.send(new GetObjectCommand({
-      Bucket: bucketName,
-      Key: `wordle/${wordleNumber}.json`
-    }));
-
-    let scores = [];
-    let newScore = {
-      phoneNumber,
-      wordleScore,
-      message
-    };
-
-    // If we don't have existing entries for this Wordle
-    if (object.Body == undefined) {
-      scores.push(newScore);
-    // Otherwise add score to list of entries and sort it
-    } else {
-      scores = JSON.parse(await object.Body.transformToString('utf-8'));
-      scores.push(newScore);
-      scores.sort((a: any, b: any) => {
-        return a.wordleScore - b.wordleScore;
-      })
-    }
-    
-    // Put updated score array into S3 
+    // Put wordle game object into S3 
+    const phoneNumber = params.From;
+    const wordleGame: WordleGame = parseWordleMessage(message);
     await s3.send(
       new PutObjectCommand({
         Bucket: bucketName,
-        Key: `wordle/${wordleNumber}/${phoneNumber}.json`,
-        Body: JSON.stringify(scores),
+        Key: `wordle/${phoneNumber}/${wordleGame.number}.json`,
+        Body: JSON.stringify(wordleGame),
       })
     );
 
