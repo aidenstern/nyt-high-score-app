@@ -5,7 +5,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import * as lambdaevents from "aws-cdk-lib/aws-lambda-event-sources";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 export class WordleHighScoreStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -16,24 +16,12 @@ export class WordleHighScoreStack extends Stack {
       versioned: true,
     });
 
-    // Event that fires when game score bucket is updated
-    const gameBucketEventSource = new lambdaevents.S3EventSource(
-      gameScoreBucket,
-      {
-        events: [s3.EventType.OBJECT_CREATED_PUT],
-      }
-    );
-
-    // S3 bucket for website
-    const websiteBucket = new s3.Bucket(this, "WebsiteBucket", {
-      versioned: true,
-    });
-
     // Twilio secrets
     const twilioSecret = new secretsmanager.Secret(this, "TwilioSecrets", {
       generateSecretString: {
         secretStringTemplate: JSON.stringify({
           ACCOUNT_SID: "",
+          PHONE_NUMBER: "",
         }),
         generateStringKey: "AUTH_TOKEN",
       },
@@ -56,32 +44,73 @@ export class WordleHighScoreStack extends Stack {
     gameScoreBucket.grantReadWrite(wordleScoreHandler);
     twilioSecret.grantRead(wordleScoreHandler);
 
-    // Lambda function handler for generating website
-    const websiteGenerationHandler = new lambda.NodejsFunction(
-      this,
-      "WebsiteGenerationHandler",
-      {
-        entry: "lib/website-generation.handler.ts",
-        environment: {
-          GAME_SCORE_BUCKET_NAME: gameScoreBucket.bucketName,
-          WEBSITE_BUCKET_NAME: websiteBucket.bucketName,
-        },
-      }
-    );
-
-    // Trigger lambda when game bucket is updated
-    websiteGenerationHandler.addEventSource(gameBucketEventSource);
-
-    // Permissions for website generation lambda
-    gameScoreBucket.grantRead(websiteGenerationHandler);
-    websiteBucket.grantWrite(websiteGenerationHandler);
-
     // API Gateway for Twilio webhook
     const api = new apigateway.RestApi(this, "GameScoreApi");
     const smsResource = api.root.addResource("sms");
     const smsIntegration = new apigateway.LambdaIntegration(
+      wordleScoreHandler,
+      {
+        proxy: true,
+      }
+    );
+
+    // DynamoDB table to store OTPs
+    const otpTable = new dynamodb.Table(this, "OTPTable", {
+      partitionKey: {
+        name: "phoneNumberHash",
+        type: dynamodb.AttributeType.STRING,
+      },
+      timeToLiveAttribute: "ttl",
+    });
+
+
+    // OTP Lambda handler
+    const otpHandler = new lambda.NodejsFunction(this, "OTPHandler", {
+      entry: "lib/otp.handler.ts",
+      environment: {
+        TWILIO_SECRET_ARN: twilioSecret.secretArn,
+        OTP_TABLE_NAME: otpTable.tableName,
+      },
+    });
+
+    // Grant permissions to access Twilio secrets
+    twilioSecret.grantRead(otpHandler);
+
+    // Grant permissions to access the OTP table
+    otpTable.grantReadWriteData(otpHandler);
+
+    // Authorizer Lambda handler
+    const authorizerHandler = new lambda.NodejsFunction(
+      this,
+      "AuthorizerHandler",
+      { 
+        entry: "lib/authorizer.handler.ts",
+        environment: {
+          OTP_TABLE_NAME: otpTable.tableName,
+        },
+      }
+    );
+
+    // Grant permissions to access the OTP table
+    otpTable.grantReadWriteData(authorizerHandler);
+
+    // API Gateway for the OTP endpoint
+    const otpApi = new apigateway.RestApi(this, "OTPEndpoint");
+    const otpResource = otpApi.root.addResource("otp");
+    const otpIntegration = new apigateway.LambdaIntegration(otpHandler);
+    otpResource.addMethod("POST", otpIntegration);
+
+    // API Gateway for Wordle scores endpoint with authorizer
+    const scoresApi = new apigateway.RestApi(this, "WordleScoresApi");
+    const scoresResource = scoresApi.root.addResource("scores");
+    const scoresIntegration = new apigateway.LambdaIntegration(
       wordleScoreHandler
     );
+    const authorizer = new apigateway.TokenAuthorizer(this, "Authorizer", {
+      handler: authorizerHandler,
+    });
+    scoresResource.addMethod("GET", scoresIntegration, { authorizer });
+
     smsResource.addMethod("POST", smsIntegration);
   }
 }

@@ -6,12 +6,17 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import twilio = require("twilio");
+import { createHash } from "crypto";
 
 const s3 = new S3Client({});
 const secretsManager = new SecretsManagerClient({});
 
 const bucketName = process.env.BUCKET_NAME;
 const twilioSecretArn = process.env.TWILIO_SECRET_ARN;
+
+function hashPhoneNumber(phoneNumber: string): string {
+  return createHash("sha256").update(phoneNumber).digest("hex");
+}
 
 export const handler: Handler = async (event, context) => {
   try {
@@ -49,7 +54,7 @@ export const handler: Handler = async (event, context) => {
     }
 
     // Put wordle game object into S3 
-    const phoneNumber = params.From;
+    const phoneNumber = hashPhoneNumber(params.From);
     const wordleGame: WordleGame = parseWordleMessage(message);
     await s3.send(
       new PutObjectCommand({
@@ -61,6 +66,7 @@ export const handler: Handler = async (event, context) => {
 
     return {
       statusCode: 200,
+      headers: { "Content-Type": "text/plain" },
       body: "Wordle score saved successfully",
     };
   } catch (err) {
@@ -68,7 +74,8 @@ export const handler: Handler = async (event, context) => {
 
     return {
       statusCode: 500,
+      headers: { "Content-Type": "text/plain" },
       body: "Error saving Wordle score",
     };
   }
-};
+}    
