@@ -27,7 +27,16 @@ export class WordleHighScoreStack extends Stack {
       },
     });
 
-    // Lambda function handler for storing Wordle scores in S3
+    // DynamoDB table to store OTPs
+    const otpTable = new dynamodb.Table(this, "OTPTable", {
+      partitionKey: {
+        name: "phoneNumberHash",
+        type: dynamodb.AttributeType.STRING,
+      },
+      timeToLiveAttribute: "ttl",
+    });
+
+    // Lambda function handlers
     const wordleScoreHandler = new lambda.NodejsFunction(
       this,
       "WordleScoreHandler",
@@ -40,31 +49,6 @@ export class WordleHighScoreStack extends Stack {
       }
     );
 
-    // Permissions for wordle score handler
-    gameScoreBucket.grantReadWrite(wordleScoreHandler);
-    twilioSecret.grantRead(wordleScoreHandler);
-
-    // API Gateway for Twilio webhook
-    const api = new apigateway.RestApi(this, "GameScoreApi");
-    const smsResource = api.root.addResource("sms");
-    const smsIntegration = new apigateway.LambdaIntegration(
-      wordleScoreHandler,
-      {
-        proxy: true,
-      }
-    );
-
-    // DynamoDB table to store OTPs
-    const otpTable = new dynamodb.Table(this, "OTPTable", {
-      partitionKey: {
-        name: "phoneNumberHash",
-        type: dynamodb.AttributeType.STRING,
-      },
-      timeToLiveAttribute: "ttl",
-    });
-
-
-    // OTP Lambda handler
     const otpHandler = new lambda.NodejsFunction(this, "OTPHandler", {
       entry: "lib/otp.handler.ts",
       environment: {
@@ -73,17 +57,10 @@ export class WordleHighScoreStack extends Stack {
       },
     });
 
-    // Grant permissions to access Twilio secrets
-    twilioSecret.grantRead(otpHandler);
-
-    // Grant permissions to access the OTP table
-    otpTable.grantReadWriteData(otpHandler);
-
-    // Authorizer Lambda handler
     const authorizerHandler = new lambda.NodejsFunction(
       this,
       "AuthorizerHandler",
-      { 
+      {
         entry: "lib/authorizer.handler.ts",
         environment: {
           OTP_TABLE_NAME: otpTable.tableName,
@@ -91,26 +68,55 @@ export class WordleHighScoreStack extends Stack {
       }
     );
 
-    // Grant permissions to access the OTP table
+    const wordleGetScoresHandler = new lambda.NodejsFunction(
+      this,
+      "WordleGetScoresHandler",
+      {
+        entry: "lib/wordle-get-scores.handler.ts",
+        environment: {
+          BUCKET_NAME: gameScoreBucket.bucketName,
+        },
+      }
+    );
+
+    // Permissions for Lambda functions
+    gameScoreBucket.grantRead(wordleGetScoresHandler);
+    gameScoreBucket.grantReadWrite(wordleScoreHandler);
+    twilioSecret.grantRead(wordleScoreHandler);
+    twilioSecret.grantRead(otpHandler);
+    otpTable.grantReadWriteData(otpHandler);
     otpTable.grantReadWriteData(authorizerHandler);
 
-    // API Gateway for the OTP endpoint
+    // API Gateway resources
+    const api = new apigateway.RestApi(this, "GameScoreApi");
+    const smsResource = api.root.addResource("sms");
+    const smsIntegration = new apigateway.LambdaIntegration(
+      wordleScoreHandler,
+      {
+        proxy: true,
+      }
+    );
+    smsResource.addMethod("POST", smsIntegration);
+
     const otpApi = new apigateway.RestApi(this, "OTPEndpoint");
     const otpResource = otpApi.root.addResource("otp");
-    const otpIntegration = new apigateway.LambdaIntegration(otpHandler);
+    const otpIntegration = new apigateway.LambdaIntegration(otpHandler, {
+      proxy: true,
+    });
     otpResource.addMethod("POST", otpIntegration);
 
-    // API Gateway for Wordle scores endpoint with authorizer
     const scoresApi = new apigateway.RestApi(this, "WordleScoresApi");
     const scoresResource = scoresApi.root.addResource("scores");
-    const scoresIntegration = new apigateway.LambdaIntegration(
+    const scoresPostIntegration = new apigateway.LambdaIntegration(
       wordleScoreHandler
+    );
+    const scoresGetIntegration = new apigateway.LambdaIntegration(
+      wordleGetScoresHandler
     );
     const authorizer = new apigateway.TokenAuthorizer(this, "Authorizer", {
       handler: authorizerHandler,
     });
-    scoresResource.addMethod("GET", scoresIntegration, { authorizer });
-
-    smsResource.addMethod("POST", smsIntegration);
+    scoresResource.addMethod("POST", scoresPostIntegration, { authorizer });
+    scoresResource.addMethod("GET", scoresGetIntegration, { authorizer });    
   }
 }

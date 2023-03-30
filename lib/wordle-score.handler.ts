@@ -1,5 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { Handler } from "aws-lambda";
+import { APIGatewayProxyHandler } from "aws-lambda";
 import { WordleGame, parseWordleMessage, isValidWordleMessage } from "./wordle";
 import {
   GetSecretValueCommand,
@@ -18,9 +18,9 @@ function hashPhoneNumber(phoneNumber: string): string {
   return createHash("sha256").update(phoneNumber).digest("hex");
 }
 
-export const handler: Handler = async (event, context) => {
+export const handler: APIGatewayProxyHandler = async (event) => {
   try {
-    console.log(event, context);
+    console.log(event);
 
     const twilioSecret = await secretsManager.send(
       new GetSecretValueCommand({
@@ -35,7 +35,7 @@ export const handler: Handler = async (event, context) => {
     const twilioAuthToken = JSON.parse(twilioSecret.SecretString).AUTH_TOKEN;
     const twilioSignature = event.headers["X-Twilio-Signature"];
     const apiUrl = `https://${event.requestContext.domainName}${event.requestContext.path}`;
-    const params = Object.fromEntries(new URLSearchParams(event.body));
+    const params = Object.fromEntries(new URLSearchParams(event.body!));
 
     const validRequest = twilio.validateRequest(
       twilioAuthToken,
